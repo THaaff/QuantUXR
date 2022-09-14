@@ -1,0 +1,151 @@
+---
+title: "Indeed Enterprise UXR Questions"
+output: html_notebook
+Author: Taylor Haaff
+---
+
+---
+QUESTIONS
+1. Determine if there are differences in NPS score by country.
+
+  a. Are any differences statistically significant, and how did you decide?
+  
+2. Is there a difference in NPS by number of jobs posted?
+
+  a. Are any differences statistically significant, and how did you decide?
+  
+3. Company leadership is interested in segmenting NPS data by company size, but we don’t collect the size of the company. 
+What segmentation strategy would you suggest based on the data available?
+
+  a. Why did you choose that segmentation strategy?
+  
+  b. What would you suspect are 1-2 dangers from this approach, and how would you
+  convey these to company leadership? Why is your strategy still viable despite
+  those dangers?
+  
+4. What strategies/methodologies would you use to extract the most common themes in
+verbatim responses from customers in the NPS survey?
+
+  a. What are some themes in these responses? If you’re able to execute some code
+  to find some themes, great, but don’t spend too much time here. It’s more important to demonstrate your understanding of methodologies.
+
+---
+First import some things I'll probably need
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(broom)
+library(dplyr)
+```
+
+
+Read in all the data
+n.b. nps = The Net Promoter Score, a 0-10 rating of how likely someone would be to recommend the product, higher is better
+```{r}
+country = read.csv('/Users/thaaff/Downloads/indeedquantitativeuxresearcher/country (1) (2).csv')
+jobs = read.csv('/Users/thaaff/Downloads/indeedquantitativeuxresearcher/jobs (1) (2).csv')
+nps = read.csv('/Users/thaaff/Downloads/indeedquantitativeuxresearcher/nps (1) (2).csv')
+verbatims = read.csv('/Users/thaaff/Downloads/indeedquantitativeuxresearcher/verbatims (1) (2).csv')
+```
+
+---
+1. Determine if there are differences in NPS score by country.
+  a. Are any differences statistically significant, and how did you decide?
+
+```{r}
+
+#group by country code
+by_country = country %>%
+  group_by(billing_country_code) %>%
+  summarise(nps = mean(nps_score),
+            count = n())
+#some of these countries have small amounts of data, the range is 1-12848
+#we might want to look at only a subset
+
+summary(by_country)
+sd(by_country$nps)
+```
+The sd and IQR are pretty large compared to the range, lets see what it looks like if we look at the top 40 or 20 countries.
+
+Top 40
+```{r}
+top40 = head(arrange(by_country,desc(count)), n = 40)
+summary(top40)
+sd(top40$nps)
+```
+
+Top 20
+```{r}
+top20 = head(arrange(by_country,desc(count)), n = 20)
+summary(top20)
+sd(top20$nps)
+```
+
+Nearly 95% (94.49%) of our data comes from the top 20 countries, and 99% (99.12%) comes from the top 40.
+Even though multiple tests decreases statistical power I'll test all the data, then the top 40, then the top 20 to compare. 
+I'll use a one-way ANOVA to check for a difference in mean nps between countries.
+
+For the ANOVA to work we need all the individual entries, not the grouped data
+```{r}
+cut40 = filter(country, billing_country_code %in% top40$billing_country_code)
+cut20 = filter(country, billing_country_code %in% top20$billing_country_code)
+```
+
+
+ANOVAs
+```{r}
+full_aov = aov(nps_score ~ billing_country_code, data = country)
+top40_aov = aov(nps_score ~ billing_country_code, data = cut40)
+top20_aov = aov(nps_score ~ billing_country_code, data = cut20)
+
+summary(full_aov)
+summary(top40_aov)
+summary(top20_aov)
+```
+
+Large F-statistic and small p-values are both indicative of significance.
+As it turns out, whether you look at the whole data set, the top 40 or the top 20 the difference between countries is always significant. 
+
+
+---
+2. Is there a difference in NPS by number of jobs posted?
+
+  a. Are any differences statistically significant, and how did you decide?
+
+Need a df with NPS and number of jobs, merge on advertiserID. 
+```{r}
+advertisers = merge(x = jobs, y = nps, by.x = 'metadataAdvertiserId', by.y = 'advertiser_id', all.x = TRUE)
+```
+
+nps is supposed to be a number from 0-10 but for some reason there are some entries larger than 10, only 3 advertisers have nps > 10 after the merge
+```{r}
+summary(advertisers)
+hist(advertisers$nps_score)
+#nps is not normally distributed, this shouldn't matter here because we have a fairly large data set, but it is worth noting.
+
+plot(advertisers$nps_score ~ advertisers$distinct.jobid.)
+#there are many more advertisers with few distinct jobs posted
+```
+
+Since dependent and independent variable are continuous we can't do an ANOVA again, I'll do a simple linear regression. 
+```{r}
+postnumber_nps_lm = lm(nps_score ~ distinct.jobid., data = advertisers)
+summary(postnumber_nps_lm)
+```
+The F-statistic for this model is very small and the p-value is very large (p>>0.05, p = 0.9578), meaning there is no significant relationship between 
+the number of jobs posted by an advertiser and their nps.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
